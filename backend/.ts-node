@@ -1,0 +1,5 @@
+{
+  "transpileOnly": true,
+  "ignore": ["node_modules/**/*"],
+  "skipLibCheck": true
+} 

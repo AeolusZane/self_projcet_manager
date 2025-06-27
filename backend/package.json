@@ -1,0 +1,48 @@
+{
+  "name": "self-manage-backend",
+  "version": "1.0.0",
+  "description": "个人工作任务管理后端服务",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "nodemon src/app.ts",
+    "build": "tsc",
+    "start": "node dist/app.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "generate-mock": "ts-node --transpile-only --skip-ignore src/scripts/generateMockData.ts"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "sqlite3": "^5.1.6"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.0",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/morgan": "^1.9.9",
+    "@types/node": "^20.10.0",
+    "@types/supertest": "^2.0.16",
+    "jest": "^29.7.0",
+    "supertest": "^6.3.4",
+    "ts-jest": "^29.1.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.3.0"
+  },
+  "keywords": [
+    "task-management",
+    "express",
+    "sqlite",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT"
+}
