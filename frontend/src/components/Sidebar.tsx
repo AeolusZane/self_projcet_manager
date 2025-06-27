@@ -23,7 +23,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
     { path: '/tasks', icon: CheckSquare, label: '任务' },
     { path: '/projects', icon: FolderOpen, label: '项目' },
     { path: '/calendar', icon: Calendar, label: '日历' },
-    { path: '/analytics', icon: BarChart3, label: '统计' },
+    { path: '/analytics', icon: BarChart3, label: '分析' },
     { path: '/users', icon: Users, label: '用户管理' },
     { path: '/settings', icon: Settings, label: '设置' },
   ];

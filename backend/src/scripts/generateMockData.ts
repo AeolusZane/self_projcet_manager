@@ -1,4 +1,4 @@
-import { getDatabase } from '../database/init';
+import { initializeDatabase, getDatabase } from '../database/init';
 import bcrypt from 'bcrypt';
 
 // Mock数据生成器
@@ -198,14 +198,6 @@ function getRandomDueDate(): string {
 }
 
 // 生成随机创建日期（过去90天内）
-function getRandomCreatedDate(): string {
-  const now = new Date();
-  const past = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-  const createdDate = getRandomDate(past, now);
-  return createdDate.toISOString().split('T')[0];
-}
-
-// 生成随机创建时间（过去90天内）
 function getRandomCreatedAt(): string {
   const now = new Date();
   const past = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
@@ -224,167 +216,175 @@ function getRandomUpdatedAt(createdAt: string): string {
 // 生成用户数据
 async function generateUsers(): Promise<number> {
   const db = getDatabase();
+  let adminUserId = 0;
   
-  console.log('开始生成用户数据...');
-  
-  // 先创建admin用户
-  const saltRounds = 10;
-  const passwordHash = await bcrypt.hash('admin123', saltRounds);
-  
-  return new Promise((resolve, reject) => {
-    db.run(
-      'INSERT OR IGNORE INTO users (username, email, password_hash) VALUES (?, ?, ?)',
-      ['admin', 'admin@example.com', passwordHash],
-      function(err) {
-        if (err) {
-          console.error('创建admin用户失败:', err);
-          reject(err);
-        } else {
-          console.log(`admin用户创建成功，ID: ${this.lastID}`);
-          resolve(this.lastID);
-        }
+  for (const user of mockData.users) {
+    try {
+      const saltRounds = 10;
+      const passwordHash = await bcrypt.hash(user.password, saltRounds);
+      
+      const result = await new Promise<{ lastID: number }>((resolve, reject) => {
+        db.run(
+          'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)',
+          [user.username, user.email, passwordHash],
+          function(err) {
+            if (err) {
+              reject(err);
+            } else {
+              resolve({ lastID: this.lastID });
+            }
+          }
+        );
+      });
+      
+      console.log(`用户 ${user.username} 创建成功，ID: ${result.lastID}`);
+      
+      if (user.username === 'admin') {
+        adminUserId = result.lastID;
       }
-    );
-  });
+    } catch (error) {
+      console.error(`创建用户 ${user.username} 失败:`, error);
+    }
+  }
+  
+  return adminUserId;
 }
 
-// 为admin用户生成项目数据
+// 生成项目数据
 async function generateProjects(adminUserId: number): Promise<number[]> {
   const db = getDatabase();
   const projectIds: number[] = [];
   
-  console.log('开始生成项目数据...');
-  
   for (const projectTemplate of mockData.projectTemplates) {
-    const createdDate = getRandomCreatedDate();
-    
-    await new Promise<void>((resolve, reject) => {
-      db.run(
-        'INSERT INTO projects (name, description, status, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-        [
-          projectTemplate.name,
-          projectTemplate.description,
-          projectTemplate.status,
-          adminUserId,
-          createdDate,
-          createdDate
-        ],
-        function(err) {
-          if (err) {
-            console.error(`创建项目失败:`, err);
-            reject(err);
-          } else {
-            console.log(`为admin创建项目: ${projectTemplate.name}，ID: ${this.lastID}`);
-            projectIds.push(this.lastID);
-            resolve();
+    try {
+      const result = await new Promise<{ lastID: number }>((resolve, reject) => {
+        db.run(
+          'INSERT INTO projects (name, description, status, user_id) VALUES (?, ?, ?, ?)',
+          [projectTemplate.name, projectTemplate.description, projectTemplate.status, adminUserId],
+          function(err) {
+            if (err) {
+              reject(err);
+            } else {
+              resolve({ lastID: this.lastID });
+            }
           }
-        }
-      );
-    });
+        );
+      });
+      
+      projectIds.push(result.lastID);
+      console.log(`为用户 ${adminUserId} 创建项目: ${projectTemplate.name}，ID: ${result.lastID}`);
+    } catch (error) {
+      console.error(`创建项目 ${projectTemplate.name} 失败:`, error);
+    }
   }
   
   return projectIds;
 }
 
-// 为admin用户生成所有81个任务
+// 生成任务数据 - 为admin用户生成81个任务
 async function generateTasks(adminUserId: number, projectIds: number[]): Promise<void> {
   const db = getDatabase();
   
-  console.log('开始为admin用户生成81个任务...');
+  console.log(`开始为admin用户生成 ${mockData.taskTemplates.length} 个任务...`);
   
   for (let i = 0; i < mockData.taskTemplates.length; i++) {
     const taskTemplate = mockData.taskTemplates[i];
-    const createdDate = getRandomCreatedDate();
-    const createdAt = getRandomCreatedAt();
-    const updatedAt = getRandomUpdatedAt(createdAt);
-    const dueDate = Math.random() > 0.3 ? getRandomDueDate() : null;
+    const projectId = projectIds[i % projectIds.length]; // 循环分配项目
     
-    // 随机分配项目
-    const projectId = projectIds.length > 0 && Math.random() > 0.2 ? 
-      projectIds[Math.floor(Math.random() * projectIds.length)] : null;
-    
-    await new Promise<void>((resolve, reject) => {
-      db.run(
-        `INSERT INTO tasks (
-          title, description, status, priority, project_id, user_id, 
-          due_date, created_date, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          taskTemplate.title,
-          taskTemplate.description,
-          taskTemplate.status,
-          taskTemplate.priority,
-          projectId,
-          adminUserId,
-          dueDate,
-          createdDate,
-          createdAt,
-          updatedAt
-        ],
-        function(err) {
-          if (err) {
-            console.error(`创建任务失败:`, err);
-            reject(err);
-          } else {
-            console.log(`为admin创建任务 ${i + 1}/81: ${taskTemplate.title}，ID: ${this.lastID}`);
-            resolve();
+    try {
+      const createdAt = getRandomCreatedAt();
+      const updatedAt = getRandomUpdatedAt(createdAt);
+      const dueDate = getRandomDueDate();
+      
+      const result = await new Promise<{ lastID: number }>((resolve, reject) => {
+        db.run(
+          `INSERT INTO tasks (
+            title, description, status, priority, project_id, user_id, 
+            due_date, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            taskTemplate.title,
+            taskTemplate.description,
+            taskTemplate.status,
+            taskTemplate.priority,
+            projectId,
+            adminUserId,
+            dueDate,
+            createdAt,
+            updatedAt
+          ],
+          function(err) {
+            if (err) {
+              reject(err);
+            } else {
+              resolve({ lastID: this.lastID });
+            }
           }
-        }
-      );
-    });
+        );
+      });
+      
+      console.log(`为用户 ${adminUserId} 创建任务: ${taskTemplate.title}，ID: ${result.lastID}`);
+    } catch (error) {
+      console.error(`创建任务 ${taskTemplate.title} 失败:`, error);
+    }
   }
   
-  console.log('所有81个任务创建完成！');
+  console.log(`为admin用户生成 ${mockData.taskTemplates.length} 个任务用于测试`);
 }
 
 // 主函数
 async function generateMockData() {
-  console.log('开始生成Mock数据...');
-  
   try {
-    const db = getDatabase();
+    console.log('开始生成Mock数据...');
+    
+    // 初始化数据库
+    await initializeDatabase();
+    console.log('数据库初始化完成');
     
     // 清空现有数据
-    console.log('清空现有数据...');
-    await new Promise<void>((resolve) => {
+    const db = getDatabase();
+    await new Promise<void>((resolve, reject) => {
       db.run('DELETE FROM tasks', (err) => {
-        if (err) console.error('清空任务表失败:', err);
+        if (err) reject(err);
+        else resolve();
       });
-      db.run('DELETE FROM projects', (err) => {
-        if (err) console.error('清空项目表失败:', err);
-      });
-      db.run('DELETE FROM users', (err) => {
-        if (err) console.error('清空用户表失败:', err);
-      });
-      setTimeout(resolve, 1000);
     });
     
-    // 按顺序生成数据
+    await new Promise<void>((resolve, reject) => {
+      db.run('DELETE FROM projects', (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    
+    await new Promise<void>((resolve, reject) => {
+      db.run('DELETE FROM users', (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    
+    console.log('清空现有数据...');
+    
+    // 生成用户数据
+    console.log('开始生成用户数据...');
     const adminUserId = await generateUsers();
+    
+    // 生成项目数据
+    console.log('开始生成项目数据...');
     const projectIds = await generateProjects(adminUserId);
+    
+    // 生成任务数据
+    console.log('开始生成任务数据...');
     await generateTasks(adminUserId, projectIds);
     
     console.log('Mock数据生成完成！');
-    console.log(`admin用户ID: ${adminUserId}`);
-    console.log(`生成了 ${projectIds.length} 个项目`);
-    console.log(`生成了 81 个任务`);
-    
-    // 关闭数据库连接
-    setTimeout(() => {
-      db.close();
-      console.log('数据库连接已关闭');
-      process.exit(0);
-    }, 1000);
-    
+    process.exit(0);
   } catch (error) {
     console.error('生成Mock数据失败:', error);
     process.exit(1);
   }
 }
 
-// 如果直接运行此脚本
-if (require.main === module) {
-  generateMockData();
-}
-
-export { generateMockData }; 
+// 运行脚本
+generateMockData(); 

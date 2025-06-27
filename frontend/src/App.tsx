@@ -13,6 +13,7 @@ import Register from './pages/Register';
 import { AuthService } from './services/authService';
 import Users from './pages/Users';
 import Profile from './pages/Profile';
+import { AlertProvider, useAlert } from './components/Alert';
 
 // 受保护的路由组件
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -87,128 +88,127 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
 const App: React.FC = () => {
   return (
-    <Router>
-      <Routes>
-        {/* 公开路由 - 未登录用户可以访问 */}
-        <Route path="/login" element={
-          <PublicRoute>
-            <Login />
-          </PublicRoute>
-        } />
-        <Route path="/register" element={
-          <PublicRoute>
-            <Register />
-          </PublicRoute>
-        } />
-        
-        {/* 受保护的路由 - 需要登录才能访问，都使用Layout包装 */}
-        <Route path="/" element={
-          <ProtectedRoute>
-            <Layout>
-              <Dashboard />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        <Route path="/dashboard" element={
-          <ProtectedRoute>
-            <Layout>
-              <Dashboard />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        <Route path="/tasks" element={
-          <ProtectedRoute>
-            <Layout>
-              <Tasks />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        <Route path="/tasks/create" element={
-          <ProtectedRoute>
-            <Layout>
-              <CreateTask />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        
-        {/* 统计页面路由 */}
-        <Route path="/analytics" element={
-          <ProtectedRoute>
-            <Layout>
-              <Analytics />
-            </Layout>
-          </ProtectedRoute>
-        }>
-          <Route index element={<Charts />} />
-          <Route path="charts" element={<Charts />} />
-          <Route path="tables" element={<Tables />} />
-          <Route path="trends" element={<Trends />} />
-        </Route>
-        
-        {/* 用户管理页面 */}
-        <Route path="/users" element={
-          <ProtectedRoute>
-            <Layout>
-              <Users />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        
-        {/* 个人信息页面 */}
-        <Route path="/profile" element={
-          <ProtectedRoute>
-            <Layout>
-              <Profile />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        
-        {/* 项目页面 */}
-        <Route path="/projects" element={
-          <ProtectedRoute>
-            <Layout>
-              <div className="p-6">
-                <h1 className="text-2xl font-bold text-gray-900 mb-6">项目管理</h1>
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                  <p className="text-gray-600">项目页面开发中...</p>
+    <AlertProvider>
+      <Router>
+        <Routes>
+          {/* 公开路由 - 未登录用户可以访问 */}
+          <Route path="/login" element={
+            <PublicRoute>
+              <Login />
+            </PublicRoute>
+          } />
+          <Route path="/register" element={
+            <PublicRoute>
+              <Register />
+            </PublicRoute>
+          } />
+          
+          {/* 受保护的路由 - 需要登录才能访问，都使用Layout包装 */}
+          <Route path="/" element={
+            <ProtectedRoute>
+              <Layout>
+                <Dashboard />
+              </Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/dashboard" element={
+            <ProtectedRoute>
+              <Layout>
+                <Dashboard />
+              </Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/tasks" element={
+            <ProtectedRoute>
+              <Layout>
+                <Tasks />
+              </Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/tasks/create" element={
+            <ProtectedRoute>
+              <Layout>
+                <CreateTask />
+              </Layout>
+            </ProtectedRoute>
+          } />
+          
+          {/* 分析页面路由 */}
+          <Route path="/analytics" element={
+            <ProtectedRoute>
+              <Layout>
+                <Analytics />
+              </Layout>
+            </ProtectedRoute>
+          }>
+            <Route index element={<Charts />} />
+            <Route path="charts" element={<Charts />} />
+            <Route path="tables" element={<Tables />} />
+            <Route path="trends" element={<Trends />} />
+          </Route>
+          
+          {/* 用户管理页面 */}
+          <Route path="/users" element={
+            <ProtectedRoute>
+              <Layout>
+                <Users />
+              </Layout>
+            </ProtectedRoute>
+          } />
+          
+          {/* 个人信息页面 */}
+          <Route path="/profile" element={
+            <ProtectedRoute>
+              <Layout>
+                <Profile />
+              </Layout>
+            </ProtectedRoute>
+          } />
+          
+          {/* 项目页面 */}
+          <Route path="/projects" element={
+            <ProtectedRoute>
+              <Layout>
+                <div className="p-6">
+                  <h1 className="text-2xl font-bold text-gray-900 mb-6">项目管理</h1>
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <p className="text-gray-600">项目页面开发中...</p>
+                  </div>
                 </div>
-              </div>
-            </Layout>
-          </ProtectedRoute>
-        } />
-        
-        {/* 日历页面 */}
-        <Route path="/calendar" element={
-          <ProtectedRoute>
-            <Layout>
-              <div className="p-6">
-                <h1 className="text-2xl font-bold text-gray-900 mb-6">日历视图</h1>
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                  <p className="text-gray-600">日历页面开发中...</p>
+              </Layout>
+            </ProtectedRoute>
+          } />
+          
+          {/* 日历页面 */}
+          <Route path="/calendar" element={
+            <ProtectedRoute>
+              <Layout>
+                <div className="p-6">
+                  <h1 className="text-2xl font-bold text-gray-900 mb-6">日历视图</h1>
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <p className="text-gray-600">日历页面开发中...</p>
+                  </div>
                 </div>
-              </div>
-            </Layout>
-          </ProtectedRoute>
-        } />
-        
-        {/* 设置页面 */}
-        <Route path="/settings" element={
-          <ProtectedRoute>
-            <Layout>
-              <div className="p-6">
-                <h1 className="text-2xl font-bold text-gray-900 mb-6">系统设置</h1>
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                  <p className="text-gray-600">设置页面开发中...</p>
+              </Layout>
+            </ProtectedRoute>
+          } />
+          
+          {/* 设置页面 */}
+          <Route path="/settings" element={
+            <ProtectedRoute>
+              <Layout>
+                <div className="p-6">
+                  <h1 className="text-2xl font-bold text-gray-900 mb-6">系统设置</h1>
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <p className="text-gray-600">设置页面开发中...</p>
+                  </div>
                 </div>
-              </div>
-            </Layout>
-          </ProtectedRoute>
-        } />
-        
-        {/* 默认重定向 */}
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
-      </Routes>
-    </Router>
+              </Layout>
+            </ProtectedRoute>
+          } />
+        </Routes>
+      </Router>
+    </AlertProvider>
   );
 };
 

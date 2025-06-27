@@ -1,6 +1,7 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
 import { getDatabase } from '../database/init';
+import { DateUtils } from '../utils/dateUtils';
 
 const router = express.Router();
 
@@ -97,11 +98,14 @@ router.post('/', async (req, res) => {
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(password, saltRounds);
     
+    // 获取当前本地时间
+    const currentTime = DateUtils.getCurrentLocalString();
+    
     // 创建用户
     const result = await new Promise((resolve, reject) => {
       db.run(
-        'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)',
-        [username, email, passwordHash],
+        'INSERT INTO users (username, email, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+        [username, email, passwordHash, currentTime, currentTime],
         function(err) {
           if (err) reject(err);
           else resolve({ id: this.lastID });
@@ -114,8 +118,8 @@ router.post('/', async (req, res) => {
       id: (result as any).id,
       username,
       email,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      created_at: currentTime,
+      updated_at: currentTime
     });
   } catch (error) {
     console.error('创建用户失败:', error);
@@ -149,8 +153,8 @@ router.put('/:id', (req, res) => {
       }
       
       try {
-        let updateQuery = 'UPDATE users SET username = ?, email = ?, updated_at = CURRENT_TIMESTAMP';
-        let params = [username, email];
+        let updateQuery = 'UPDATE users SET username = ?, email = ?, updated_at = ?';
+        let params = [username, email, DateUtils.getCurrentLocalString()];
         
         // 如果提供了新密码，则更新密码
         if (password) {
@@ -178,7 +182,7 @@ router.put('/:id', (req, res) => {
             id: parseInt(id),
             username,
             email,
-            updated_at: new Date().toISOString()
+            updated_at: DateUtils.getCurrentLocalString()
           });
         });
       } catch (error) {
@@ -224,8 +228,8 @@ router.post('/:id/reset-password', async (req, res) => {
     // 更新密码
     const result = await new Promise((resolve, reject) => {
       db.run(
-        'UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-        [passwordHash, id],
+        'UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?',
+        [passwordHash, DateUtils.getCurrentLocalString(), id],
         function(err) {
           if (err) reject(err);
           else resolve({ changes: this.changes });

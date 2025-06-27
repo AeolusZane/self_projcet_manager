@@ -121,8 +121,8 @@ const Trends: React.FC = () => {
     const timeData = generateTimeData();
     const newTaskData = timeData.map(item => {
       const newTasks = tasks.filter(task => {
-        if (!task.created_date) return false;
-        return task.created_date === item.date;
+        if (!task.created_at) return false;
+        return task.created_at === item.date;
       }).length;
       
       return {
@@ -159,19 +159,19 @@ const Trends: React.FC = () => {
     const statusData = timeData.map(item => {
       const pendingTasks = tasks.filter(task => {
         if (task.status !== 'pending') return false;
-        const taskDate = task.created_date || new Date(task.created_at).toISOString().split('T')[0];
+        const taskDate = task.created_at || new Date(task.created_at).toISOString().split('T')[0];
         return taskDate <= item.date;
       }).length;
 
       const inProgressTasks = tasks.filter(task => {
         if (task.status !== 'in_progress') return false;
-        const taskDate = task.created_date || new Date(task.created_at).toISOString().split('T')[0];
+        const taskDate = task.created_at || new Date(task.created_at).toISOString().split('T')[0];
         return taskDate <= item.date;
       }).length;
 
       const completedTasks = tasks.filter(task => {
         if (task.status !== 'completed') return false;
-        const taskDate = task.created_date || new Date(task.updated_at).toISOString().split('T')[0];
+        const taskDate = task.created_at || new Date(task.updated_at).toISOString().split('T')[0];
         return taskDate <= item.date;
       }).length;
       

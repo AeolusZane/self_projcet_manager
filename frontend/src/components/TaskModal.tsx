@@ -24,7 +24,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
     priority: 'medium',
     project_id: undefined,
     due_date: '',
-    created_date: new Date().toISOString().split('T')[0], // 默认今天
+    created_at: new Date().toISOString().split('T')[0], // 默认今天
   });
 
   useEffect(() => {
@@ -36,7 +36,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
         priority: task.priority,
         project_id: task.project_id,
         due_date: task.due_date || '',
-        created_date: task.created_date || new Date().toISOString().split('T')[0],
+        created_at: task.created_at || new Date().toISOString().split('T')[0],
       });
     } else {
       setFormData({
@@ -46,7 +46,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
         priority: 'medium',
         project_id: undefined,
         due_date: '',
-        created_date: new Date().toISOString().split('T')[0],
+        created_at: new Date().toISOString().split('T')[0],
       });
     }
   }, [task]);
@@ -195,8 +195,8 @@ const TaskModal: React.FC<TaskModalProps> = ({
               </label>
               <input
                 type="date"
-                value={formData.created_date}
-                onChange={(e) => handleInputChange('created_date', e.target.value)}
+                value={formData.created_at}
+                onChange={(e) => handleInputChange('created_at', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>

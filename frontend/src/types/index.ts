@@ -6,7 +6,7 @@ export interface Task {
   priority: 'low' | 'medium' | 'high';
   project_id?: number;
   due_date?: string; // 包含日期和时间的完整字符串
-  created_date?: string;
+  created_at?: string;
   created_at?: string;
   updated_at?: string;
   project_name?: string;

@@ -1,5 +1,6 @@
 import express from 'express';
 import { getDatabase } from '../database/init';
+import { DateUtils } from '../utils/dateUtils';
 
 const router = express.Router();
 
@@ -49,85 +50,71 @@ router.get('/:id', (req: express.Request, res: express.Response) => {
 });
 
 // 创建项目
-router.post('/', (req: express.Request, res: express.Response) => {
-  const db = getDatabase();
-  const { name, description, status } = req.body;
-  const userId = req.user?.userId;
-
-  if (!userId) {
-    return res.status(401).json({ error: '用户未认证' });
-  }
-
-  if (!name) {
-    res.status(400).json({ error: '项目名称是必需的' });
-    return;
-  }
-
-  const sql = 'INSERT INTO projects (name, description, status, user_id) VALUES (?, ?, ?, ?)';
+router.post('/', (req, res) => {
+  const { name, description, status, user_id } = req.body;
   
-  db.run(sql, [name, description, status, userId], function(err) {
-    if (err) {
-      console.error('创建项目失败:', err);
-      res.status(500).json({ error: '创建项目失败' });
-      return;
-    }
-    
-    // 获取新创建的项目
-    db.get('SELECT * FROM projects WHERE id = ?', [this.lastID], (err, project) => {
+  if (!name || !user_id) {
+    return res.status(400).json({ error: '项目名称和用户ID是必需的' });
+  }
+  
+  const db = getDatabase();
+  const currentTime = DateUtils.getCurrentLocalString();
+  
+  db.run(
+    'INSERT INTO projects (name, description, status, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [name, description || '', status || 'active', user_id, currentTime, currentTime],
+    function(err) {
       if (err) {
-        console.error('获取新项目失败:', err);
-        res.status(500).json({ error: '获取新项目失败' });
-        return;
+        console.error('创建项目失败:', err);
+        return res.status(500).json({ error: '创建项目失败' });
       }
-      res.status(201).json(project);
-    });
-  });
+      
+      // 获取创建的项目详情
+      db.get('SELECT * FROM projects WHERE id = ?', [this.lastID], (err, project) => {
+        if (err) {
+          console.error('获取项目详情失败:', err);
+          return res.status(500).json({ error: '获取项目详情失败' });
+        }
+        
+        res.status(201).json(project);
+      });
+    }
+  );
 });
 
 // 更新项目
-router.put('/:id', (req: express.Request, res: express.Response) => {
-  const db = getDatabase();
+router.put('/:id', (req, res) => {
   const { id } = req.params;
   const { name, description, status } = req.body;
-  const userId = req.user?.userId;
-
-  if (!userId) {
-    return res.status(401).json({ error: '用户未认证' });
-  }
-
+  const userId = (req as any).user.userId;
+  
   if (!name) {
-    res.status(400).json({ error: '项目名称是必需的' });
-    return;
+    return res.status(400).json({ error: '项目名称是必需的' });
   }
-
-  // 先检查项目是否属于当前用户
-  db.get('SELECT id FROM projects WHERE id = ? AND user_id = ?', [id, userId], (err, project) => {
+  
+  const db = getDatabase();
+  const currentTime = DateUtils.getCurrentLocalString();
+  
+  const sql = 'UPDATE projects SET name = ?, description = ?, status = ?, updated_at = ? WHERE id = ? AND user_id = ?';
+  
+  db.run(sql, [name, description || '', status || 'active', currentTime, id, userId], function(err) {
     if (err) {
-      console.error('查询项目失败:', err);
-      res.status(500).json({ error: '查询项目失败' });
-      return;
+      console.error('更新项目失败:', err);
+      return res.status(500).json({ error: '更新项目失败' });
     }
-
-    if (!project) {
-      res.status(404).json({ error: '项目不存在或无权限访问' });
-      return;
-    }
-
-    const sql = 'UPDATE projects SET name = ?, description = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?';
     
-    db.run(sql, [name, description, status, id, userId], function(err) {
+    if (this.changes === 0) {
+      return res.status(404).json({ error: '项目不存在或无权限修改' });
+    }
+    
+    // 获取更新后的项目详情
+    db.get('SELECT * FROM projects WHERE id = ?', [id], (err, project) => {
       if (err) {
-        console.error('更新项目失败:', err);
-        res.status(500).json({ error: '更新项目失败' });
-        return;
+        console.error('获取项目详情失败:', err);
+        return res.status(500).json({ error: '获取项目详情失败' });
       }
       
-      if (this.changes === 0) {
-        res.status(404).json({ error: '项目不存在或无权限访问' });
-        return;
-      }
-      
-      res.json({ message: '项目更新成功' });
+      res.json(project);
     });
   });
 });

@@ -1,5 +1,6 @@
 import express from 'express';
 import { getDatabase } from '../database/init';
+import { DateUtils } from '../utils/dateUtils';
 
 const router = express.Router();
 
@@ -181,7 +182,7 @@ router.get('/export', (req, res) => {
                     task.status === 'in_progress' ? '进行中' : '待处理',
         '优先级': task.priority === 'high' ? '高' : 
                   task.priority === 'medium' ? '中' : '低',
-        '创建日期': task.created_date || '',
+        '创建日期': task.created_at || '',
         '截止日期': task.due_date || '',
         '创建时间': task.created_at ? new Date(task.created_at).toLocaleString('zh-CN') : '',
         '更新时间': formattedUpdatedAt,
@@ -220,96 +221,107 @@ router.get('/:id', (req, res) => {
 });
 
 // 创建新任务
-router.post('/', (req: express.Request, res: express.Response) => {
+router.post('/', (req, res) => {
   const db = getDatabase();
-  const { title, description, status, priority, project_id, due_date } = req.body;
-  const userId = req.user?.userId;
+  const {
+    title,
+    description = '',
+    status = 'pending',
+    priority = 'medium',
+    project_id = null,
+    due_date = null,
+    user_id,
+    created_at = null
+  } = req.body;
 
-  if (!userId) {
-    return res.status(401).json({ error: '用户未认证' });
+  if (!title || !user_id) {
+    return res.status(400).json({ error: '任务标题和用户ID是必需的' });
   }
 
-  if (!title) {
-    res.status(400).json({ error: '任务标题是必需的' });
-    return;
-  }
+  const now = new Date().toISOString();
 
-  const sql = `
-    INSERT INTO tasks (title, description, status, priority, project_id, user_id, due_date, created_date) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_DATE)
-  `;
-  
-  db.run(sql, [title, description, status, priority, project_id, userId, due_date], function(err) {
-    if (err) {
-      console.error('创建任务失败:', err);
-      res.status(500).json({ error: '创建任务失败' });
-      return;
-    }
-    
-    // 获取新创建的任务
-    db.get(`
-      SELECT t.*, p.name as project_name 
-      FROM tasks t 
-      LEFT JOIN projects p ON t.project_id = p.id 
-      WHERE t.id = ?
-    `, [this.lastID], (err, task) => {
+  db.run(
+    `INSERT INTO tasks 
+      (title, description, status, priority, project_id, user_id, due_date, created_at, updated_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      title,
+      description,
+      status,
+      priority,
+      project_id,
+      user_id,
+      due_date,
+      now,
+      now,
+      created_at || now.split('T')[0]
+    ],
+    function (err) {
       if (err) {
-        console.error('获取新任务失败:', err);
-        res.status(500).json({ error: '获取新任务失败' });
-        return;
+        console.error('创建任务失败:', err);
+        return res.status(500).json({ error: '创建任务失败' });
       }
-      res.status(201).json(task);
-    });
-  });
+      // 返回新建的任务ID
+      res.status(201).json({ id: this.lastID });
+    }
+  );
 });
 
 // 更新任务
-router.put('/:id', (req: express.Request, res: express.Response) => {
-  const db = getDatabase();
+router.put('/:id', (req, res) => {
   const { id } = req.params;
   const { title, description, status, priority, project_id, due_date } = req.body;
-  const userId = req.user?.userId;
-
-  if (!userId) {
-    return res.status(401).json({ error: '用户未认证' });
-  }
-
+  const userId = (req as any).user.userId;
+  
   if (!title) {
-    res.status(400).json({ error: '任务标题是必需的' });
-    return;
+    return res.status(400).json({ error: '任务标题是必需的' });
   }
-
-  // 先检查任务是否属于当前用户
-  db.get('SELECT id FROM tasks WHERE id = ? AND user_id = ?', [id, userId], (err, task) => {
+  
+  const db = getDatabase();
+  const currentTime = DateUtils.getCurrentLocalString();
+  
+  // 如果状态变为completed，设置completed_at
+  let completedAt = null;
+  if (status === 'completed') {
+    completedAt = currentTime;
+  }
+  
+  const updateFields = [
+    title, description || '', status || 'pending', priority || 'medium', 
+    project_id || null, due_date || null, currentTime, completedAt, id, userId
+  ];
+  
+  const sql = `
+    UPDATE tasks 
+    SET title = ?, description = ?, status = ?, priority = ?, 
+        project_id = ?, due_date = ?, updated_at = ?, 
+        completed_at = CASE WHEN status = 'completed' AND completed_at IS NULL THEN ? ELSE completed_at END
+    WHERE id = ? AND user_id = ?
+  `;
+  
+  db.run(sql, updateFields, function(err) {
     if (err) {
-      console.error('查询任务失败:', err);
-      res.status(500).json({ error: '查询任务失败' });
-      return;
+      console.error('更新任务失败:', err);
+      return res.status(500).json({ error: '更新任务失败' });
     }
-
-    if (!task) {
-      res.status(404).json({ error: '任务不存在或无权限访问' });
-      return;
-    }
-
-    const sql = `
-      UPDATE tasks 
-      SET title = ?, description = ?, status = ?, priority = ?, project_id = ?, due_date = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND user_id = ?
-    `;
     
-    db.run(sql, [title, description, status, priority, project_id, due_date, id, userId], function(err) {
-      if (err) {
-        console.error('更新任务失败:', err);
-        res.status(500).json({ error: '更新任务失败' });
-        return;
+    if (this.changes === 0) {
+      return res.status(404).json({ error: '任务不存在或无权限修改' });
+    }
+    
+    // 获取更新后的任务详情
+    db.get(
+      'SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.id = ?',
+      [id],
+      (err, task) => {
+        if (err) {
+          console.error('获取任务详情失败:', err);
+          return res.status(500).json({ error: '获取任务详情失败' });
+        }
+        
+        res.json(task);
       }
-      if (this.changes === 0) {
-        res.status(404).json({ error: '任务不存在或无权限访问' });
-        return;
-      }
-      res.json({ message: '任务更新成功' });
-    });
+    );
   });
 });
 
@@ -428,7 +440,7 @@ router.post('/export-format', (req, res) => {
                     task.status === 'in_progress' ? '进行中' : '待处理',
         '优先级': task.priority === 'high' ? '高' : 
                   task.priority === 'medium' ? '中' : '低',
-        '创建日期': task.created_date || '',
+        '创建日期': task.created_at || '',
         '截止日期': task.due_date || '',
         '创建时间': formattedCreatedAt,
         '更新时间': formattedUpdatedAt,

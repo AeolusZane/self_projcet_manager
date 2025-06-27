@@ -1,49 +1,57 @@
 import React, { useState, useEffect } from 'react';
-import { Search,X, Download,  Trash2,  Info } from 'lucide-react';
+import { Search, X, Download, Trash2, Info } from 'lucide-react';
 import type { Task, Project } from '../../types';
 import { TaskService } from '../../services/taskService';
 import { ProjectService } from '../../services/projectService';
 import TaskModal from '../../components/TaskModal';
 import ExportModal from '../../components/ExportModal';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import { useAlert } from '../../components/Alert';
+import { AuthService } from '../../services/authService';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import DataTable from '../../components/DataTable';
 
 const Tables: React.FC = () => {
+  const { showAlert } = useAlert();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'tasks' | 'projects'>('tasks');
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [priorityFilter, setPriorityFilter] = useState<string>('all');
-  const [projectFilter, setProjectFilter] = useState<string>('all');
-  const [filteredTasks, setFilteredTasks] = useState<Task[]>([]);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  
-  // 勾选相关状态
+  const [statusFilter, setStatusFilter] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('');
+  const [projectFilter, setProjectFilter] = useState('');
+  const [activeTab, setActiveTab] = useState<'tasks' | 'projects'>('tasks');
   const [selectedTasks, setSelectedTasks] = useState<Set<number>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
-
-  // 详情弹框状态
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedTaskDetail, setSelectedTaskDetail] = useState<Task | null>(null);
+  const [taskPage, setTaskPage] = useState(1);
+  const [projectPage, setProjectPage] = useState(1);
+  
+  // 确认对话框状态
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: 'danger' | 'warning' | 'info';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'danger',
+    onConfirm: () => {}
+  });
+
+  const PAGE_SIZE = 20;
 
   useEffect(() => {
     loadData();
   }, []);
-
-  useEffect(() => {
-    filterTasks();
-  }, [tasks, searchTerm, statusFilter, priorityFilter, projectFilter]);
-
-  // 当筛选结果改变时，重置勾选状态
-  useEffect(() => {
-    setSelectedTasks(new Set());
-    setSelectAll(false);
-  }, [filteredTasks]);
 
   const loadData = async () => {
     try {
@@ -56,26 +64,26 @@ const Tables: React.FC = () => {
       setProjects(projectsData);
     } catch (error) {
       console.error('加载数据失败:', error);
+      showAlert('error', '加载失败', '数据加载失败，请重试');
     } finally {
       setLoading(false);
     }
   };
 
   const filterTasks = () => {
-    let filtered = tasks.filter(task => {
+    return tasks.filter(task => {
       const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           task.description.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesStatus = statusFilter === 'all' || task.status === statusFilter;
-      const matchesPriority = priorityFilter === 'all' || task.priority === priorityFilter;
-      const matchesProject = projectFilter === 'all' || task.project_id?.toString() === projectFilter;
+                           task.description?.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus = !statusFilter || task.status === statusFilter;
+      const matchesPriority = !priorityFilter || task.priority === priorityFilter;
+      const matchesProject = !projectFilter || task.project_id === Number(projectFilter);
       
       return matchesSearch && matchesStatus && matchesPriority && matchesProject;
     });
-    
-    setFilteredTasks(filtered);
   };
 
-  // 处理单个任务勾选
+  const filteredTasks = filterTasks();
+
   const handleTaskSelect = (taskId: number) => {
     const newSelected = new Set(selectedTasks);
     if (newSelected.has(taskId)) {
@@ -84,69 +92,70 @@ const Tables: React.FC = () => {
       newSelected.add(taskId);
     }
     setSelectedTasks(newSelected);
-    
-    // 检查是否全选
     setSelectAll(newSelected.size === filteredTasks.length);
   };
 
-  // 处理全选/取消全选
   const handleSelectAll = () => {
     if (selectAll) {
       setSelectedTasks(new Set());
       setSelectAll(false);
     } else {
-      const allTaskIds = new Set(filteredTasks.map(task => task.id!));
-      setSelectedTasks(allTaskIds);
+      setSelectedTasks(new Set(filteredTasks.map(task => task.id!)));
       setSelectAll(true);
     }
   };
 
-  // 获取选中的任务
   const getSelectedTasks = () => {
-    return filteredTasks.filter(task => selectedTasks.has(task.id!));
+    return tasks.filter(task => selectedTasks.has(task.id!));
   };
 
-  // 导出选中的任务
   const handleExportSelected = async () => {
     const selectedTaskList = getSelectedTasks();
     
     if (selectedTaskList.length === 0) {
-      alert('请先选择要导出的任务');
+      showAlert('warning', '提示', '请先选择要导出的任务');
       return;
     }
 
     try {
-      // 使用TaskService的导出方法
-      const result = await TaskService.getTaskExportFormat(
-        selectedTaskList.map(task => task.id!),
-        {
-          status: statusFilter,
-          priority: priorityFilter,
-          project_id: projectFilter,
-          search: searchTerm
-        }
-      );
-      
-      if (result.total === 0) {
-        alert('所选条件范围内没有任务数据');
-        return;
-      }
+      const dataToExport = selectedTaskList.map(task => ({
+        '任务标题': task.title,
+        '描述': task.description || '',
+        '状态': task.status === 'completed' ? '已完成' : task.status === 'in_progress' ? '进行中' : '待处理',
+        '优先级': task.priority === 'high' ? '高' : task.priority === 'medium' ? '中' : '低',
+        '所属项目': task.project_name || '无项目',
+        '截止日期': task.due_date || '',
+        '创建时间': task.created_at || '',
+        '更新时间': task.updated_at || ''
+      }));
 
-      const worksheet = XLSX.utils.json_to_sheet(result.data);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, '选中任务数据');
-      
-      // 使用后台返回的列宽配置
-      worksheet['!cols'] = result.columnWidths;
-
-      const fileName = `选中任务数据_${new Date().toISOString().slice(0, 10)}`;
-      const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      saveAs(blob, `${fileName}.xlsx`);
+      const ws = XLSX.utils.json_to_sheet(dataToExport);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '选中任务');
+      const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      saveAs(data, `选中任务_${new Date().toISOString().split('T')[0]}.xlsx`);
+      showAlert('success', '导出成功', '选中任务已成功导出');
     } catch (error) {
       console.error('导出失败:', error);
-      alert('导出失败，请重试');
+      showAlert('error', '导出失败', '导出失败，请重试');
     }
+  };
+
+  // 显示确认对话框
+  const showConfirmDialog = (title: string, message: string, onConfirm: () => void, type: 'danger' | 'warning' | 'info' = 'danger') => {
+    setConfirmDialog({
+      isOpen: true,
+      title,
+      message,
+      type,
+      onConfirm
+    });
+  };
+
+  // 隐藏确认对话框
+  const hideConfirmDialog = () => {
+    setConfirmDialog(prev => ({ ...prev, isOpen: false }));
   };
 
   // 批量删除选中的任务
@@ -154,25 +163,29 @@ const Tables: React.FC = () => {
     const selectedTaskList = getSelectedTasks();
     
     if (selectedTaskList.length === 0) {
-      alert('请先选择要删除的任务');
+      showAlert('warning', '提示', '请先选择要删除的任务');
       return;
     }
 
-    if (!window.confirm(`确定要删除选中的 ${selectedTaskList.length} 个任务吗？`)) {
-      return;
-    }
-
-    try {
-      // 批量删除
-      await Promise.all(selectedTaskList.map(task => TaskService.deleteTask(task.id!)));
-      await loadData();
-      setSelectedTasks(new Set());
-      setSelectAll(false);
-      alert('删除成功');
-    } catch (error) {
-      console.error('批量删除失败:', error);
-      alert('删除失败，请重试');
-    }
+    showConfirmDialog(
+      '确认删除',
+      `确定要删除选中的 ${selectedTaskList.length} 个任务吗？此操作不可撤销。`,
+      async () => {
+        try {
+          // 批量删除
+          await Promise.all(selectedTaskList.map(task => TaskService.deleteTask(task.id!)));
+          await loadData();
+          setSelectedTasks(new Set());
+          setSelectAll(false);
+          showAlert('success', '删除成功', '选中任务已成功删除');
+        } catch (error) {
+          console.error('批量删除失败:', error);
+          showAlert('error', '删除失败', '删除失败，请重试');
+        }
+        hideConfirmDialog();
+      },
+      'danger'
+    );
   };
 
   const getPriorityColor = (priority: string) => {
@@ -202,16 +215,24 @@ const Tables: React.FC = () => {
     }
   };
 
+  // 删除单个任务
   const handleDeleteTask = async (taskId: number) => {
-    if (window.confirm('确定要删除这个任务吗？')) {
-      try {
-        await TaskService.deleteTask(taskId);
-        await loadData();
-      } catch (error) {
-        console.error('删除任务失败:', error);
-        alert('删除失败，请重试');
-      }
-    }
+    showConfirmDialog(
+      '确认删除',
+      '确定要删除这个任务吗？此操作不可撤销。',
+      async () => {
+        try {
+          await TaskService.deleteTask(taskId);
+          await loadData();
+          showAlert('success', '删除成功', '任务已成功删除');
+        } catch (error) {
+          console.error('删除失败:', error);
+          showAlert('error', '删除失败', '删除失败，请重试');
+        }
+        hideConfirmDialog();
+      },
+      'danger'
+    );
   };
 
   const handleEditTask = (task: Task) => {
@@ -219,18 +240,47 @@ const Tables: React.FC = () => {
     setIsEditModalOpen(true);
   };
 
+  // 新建任务
+  const handleTaskCreate = async (taskData: Omit<Task, 'id' | 'created_at' | 'updated_at' | 'project_name'>) => {
+    const currentUser = AuthService.getCurrentUser();
+    if (!currentUser) {
+      showAlert('error', '登录提示', '请先登录');
+      return;
+    }
+    try {
+      await TaskService.createTask({
+        ...taskData,
+        user_id: currentUser.id,
+      });
+      await loadData();
+      setIsEditModalOpen(false);
+      setEditingTask(null);
+      showAlert('success', '创建成功', '任务创建成功');
+    } catch (error) {
+      console.error('创建失败:', error);
+      showAlert('error', '创建失败', '创建失败，请重试');
+    }
+  };
+
+  // 编辑任务
   const handleTaskUpdate = async (taskData: Omit<Task, 'id' | 'created_at' | 'updated_at' | 'project_name'>) => {
     if (!editingTask) return;
-    
     try {
       await TaskService.updateTask(editingTask.id!, taskData);
       await loadData();
       setIsEditModalOpen(false);
       setEditingTask(null);
+      showAlert('success', '更新成功', '任务更新成功');
     } catch (error) {
-      console.error('更新任务失败:', error);
-      alert('更新失败，请重试');
+      console.error('更新失败:', error);
+      showAlert('error', '更新失败', '更新失败，请重试');
     }
+  };
+
+  // 打开新建任务弹窗
+  const handleCreateTask = () => {
+    setEditingTask(null);
+    setIsEditModalOpen(true);
   };
 
   const handleViewDetail = (task: Task) => {
@@ -298,16 +348,16 @@ const Tables: React.FC = () => {
     return description.substring(0, maxLength) + '...';
   };
 
-  // 截断描述并转换URL为链接
+  // 截断描述并转换 [[]] 为链接
   const truncateDescriptionWithLinks = (description: string, maxLength: number = 30) => {
     if (!description) return '-';
     
     const truncated = truncateDescription(description, maxLength);
     if (truncated === description) {
-      // 如果不需要截断，转换URL为链接
+      // 如果不需要截断，转换 [[]] 为链接
       return convertUrlsToLinks(description);
     } else {
-      // 如果需要截断，只显示截断的文本，不转换URL
+      // 如果需要截断，只显示截断的文本，不转换链接
       return truncated;
     }
   };
@@ -320,8 +370,7 @@ const Tables: React.FC = () => {
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
+      minute: '2-digit'
     });
   };
 
@@ -329,7 +378,6 @@ const Tables: React.FC = () => {
     if (!dateString) return '-';
     const date = new Date(dateString);
     return date.toLocaleString('zh-CN', {
-      year: 'numeric',
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
@@ -348,174 +396,146 @@ const Tables: React.FC = () => {
     
     const date = new Date(dueDate);
     const now = new Date();
-    const diffTime = date.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    let statusClass = '';
-    let statusText = '';
-    
-    if (diffDays < 0) {
-      statusClass = 'text-red-600';
-      statusText = '已逾期';
-    } else if (diffDays === 0) {
-      statusClass = 'text-orange-600';
-      statusText = '今天到期';
-    } else if (diffDays <= 3) {
-      statusClass = 'text-yellow-600';
-      statusText = `${diffDays}天后到期`;
-    } else {
-      statusClass = 'text-gray-600';
-      statusText = `${diffDays}天后到期`;
-    }
+    const isOverdue = date < now && !isNaN(date.getTime());
     
     return (
-      <div className="flex flex-col">
-        <span className="text-sm text-gray-500">
-          {date.toLocaleDateString('zh-CN')} {date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
-        </span>
-        <span className={`text-xs ${statusClass}`}>
-          {statusText}
-        </span>
-      </div>
+      <span className={isOverdue ? 'text-red-600 font-medium' : 'text-gray-500'}>
+        {date.toLocaleDateString('zh-CN')} {date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+        {isOverdue && <span className="ml-1 text-xs bg-red-100 text-red-800 px-1 rounded">已逾期</span>}
+      </span>
     );
   };
 
-  // 导出功能
   const handleExport = async (startDate: string, endDate: string, format: 'excel' | 'csv', statusFilter: string) => {
-    if (tasks.length === 0) {
-      alert('暂无任务数据可导出');
-      return;
-    }
-
     try {
-      // 使用TaskService的导出方法
-      const result = await TaskService.getTaskExportFormat(
-        tasks.map(task => task.id!),
-        {
-          status: statusFilter,
-          start_date: startDate,
-          end_date: endDate
-        }
-      );
-
-      if (result.total === 0) {
-        alert('所选条件范围内没有任务数据');
+      let filteredTasks = tasks;
+      
+      if (startDate && endDate) {
+        filteredTasks = tasks.filter(task => {
+          if (!task.created_at) return false;
+          const taskDate = new Date(task.created_at);
+          const start = new Date(startDate);
+          const end = new Date(endDate);
+          return taskDate >= start && taskDate <= end;
+        });
+      }
+      
+      if (statusFilter && statusFilter !== 'all') {
+        filteredTasks = filteredTasks.filter(task => task.status === statusFilter);
+      }
+      
+      if (filteredTasks.length === 0) {
+        showAlert('warning', '提示', '所选条件范围内没有任务数据');
         return;
       }
-
-      const worksheet = XLSX.utils.json_to_sheet(result.data);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, '任务数据');
       
-      // 使用后台返回的列宽配置
-      worksheet['!cols'] = result.columnWidths;
-
-      const statusText = statusFilter === 'all' ? '全部' : 
-                        statusFilter === 'pending' ? '待处理' :
-                        statusFilter === 'in_progress' ? '进行中' :
-                        statusFilter === 'completed' ? '已完成' : statusFilter;
-      
-      const fileName = `任务数据_${startDate}_${endDate}_${statusText}`;
+      const dataToExport = filteredTasks.map(task => ({
+        '任务标题': task.title,
+        '描述': task.description || '',
+        '状态': task.status === 'completed' ? '已完成' : task.status === 'in_progress' ? '进行中' : '待处理',
+        '优先级': task.priority === 'high' ? '高' : task.priority === 'medium' ? '中' : '低',
+        '所属项目': task.project_name || '无项目',
+        '截止日期': task.due_date || '',
+        '创建时间': task.created_at || '',
+        '更新时间': task.updated_at || ''
+      }));
       
       if (format === 'excel') {
-        const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-        const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        saveAs(blob, `${fileName}.xlsx`);
+        const ws = XLSX.utils.json_to_sheet(dataToExport);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, '任务数据');
+        const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        saveAs(data, `任务数据_${startDate}_${endDate}.xlsx`);
       } else {
-        const csvContent = XLSX.utils.sheet_to_csv(worksheet);
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        saveAs(blob, `${fileName}.csv`);
+        const csvContent = dataToExport.map(row => Object.values(row).join(',')).join('\n');
+        const csvHeader = Object.keys(dataToExport[0]).join(',');
+        const csvData = csvHeader + '\n' + csvContent;
+        const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+        saveAs(blob, `任务数据_${startDate}_${endDate}.csv`);
       }
+      
+      showAlert('success', '导出成功', '任务数据已成功导出');
     } catch (error) {
       console.error('导出失败:', error);
-      alert('导出失败，请重试');
+      showAlert('error', '导出失败', '导出失败，请重试');
     }
   };
 
-  // 导出项目数据
   const handleExportProjects = async () => {
     if (projects.length === 0) {
-      alert('暂无项目数据可导出');
+      showAlert('warning', '提示', '暂无项目数据可导出');
       return;
     }
-
+    
     try {
-      // 使用ProjectService的导出方法
-      const result = await ProjectService.getProjectExportFormat(
-        projects.map(project => project.id!)
-      );
-
-      const worksheet = XLSX.utils.json_to_sheet(result.data);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, '项目数据');
+      const dataToExport = projects.map(project => ({
+        '项目名称': project.name,
+        '描述': project.description || '',
+        '状态': project.status === 'active' ? '活跃' : project.status === 'completed' ? '已完成' : '已归档',
+        '创建时间': project.created_at || '',
+        '更新时间': project.updated_at || ''
+      }));
       
-      // 使用后台返回的列宽配置
-      worksheet['!cols'] = result.columnWidths;
-
-      const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([excelBuffer], { type: 'application/octet-stream' });
-      const fileName = `项目数据_${new Date().toISOString().slice(0, 10)}.xlsx`;
-      saveAs(blob, fileName);
+      const ws = XLSX.utils.json_to_sheet(dataToExport);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '项目数据');
+      const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      saveAs(data, `项目数据_${new Date().toISOString().split('T')[0]}.xlsx`);
+      showAlert('success', '导出成功', '项目数据已成功导出');
     } catch (error) {
-      console.error('导出项目失败:', error);
-      alert('导出失败，请重试');
+      console.error('导出失败:', error);
+      showAlert('error', '导出失败', '导出失败，请重试');
     }
   };
 
-  // 导出所有数据
   const handleExportAll = async () => {
     if (tasks.length === 0 && projects.length === 0) {
-      alert('暂无数据可导出');
+      showAlert('warning', '提示', '暂无数据可导出');
       return;
     }
-
+    
     try {
       const workbook = XLSX.utils.book_new();
       
+      // 导出任务数据
       if (tasks.length > 0) {
-        // 使用TaskService的导出方法
-        const taskResult = await TaskService.getTaskExportFormat(
-          tasks.map(task => task.id!)
-        );
-        
-        const taskWorksheet = XLSX.utils.json_to_sheet(taskResult.data);
-        XLSX.utils.book_append_sheet(workbook, taskWorksheet, '任务数据');
-        taskWorksheet['!cols'] = taskResult.columnWidths;
+        const taskData = tasks.map(task => ({
+          '任务标题': task.title,
+          '描述': task.description || '',
+          '状态': task.status === 'completed' ? '已完成' : task.status === 'in_progress' ? '进行中' : '待处理',
+          '优先级': task.priority === 'high' ? '高' : task.priority === 'medium' ? '中' : '低',
+          '所属项目': task.project_name || '无项目',
+          '截止日期': task.due_date || '',
+          '创建时间': task.created_at || '',
+          '更新时间': task.updated_at || ''
+        }));
+        const taskSheet = XLSX.utils.json_to_sheet(taskData);
+        XLSX.utils.book_append_sheet(workbook, taskSheet, '任务数据');
       }
       
+      // 导出项目数据
       if (projects.length > 0) {
-        // 使用ProjectService的导出方法
-        const projectResult = await ProjectService.getProjectExportFormat(
-          projects.map(project => project.id!)
-        );
-        
-        const projectWorksheet = XLSX.utils.json_to_sheet(projectResult.data);
-        XLSX.utils.book_append_sheet(workbook, projectWorksheet, '项目数据');
-        projectWorksheet['!cols'] = projectResult.columnWidths;
+        const projectData = projects.map(project => ({
+          '项目名称': project.name,
+          '描述': project.description || '',
+          '状态': project.status === 'active' ? '活跃' : project.status === 'completed' ? '已完成' : '已归档',
+          '创建时间': project.created_at || '',
+          '更新时间': project.updated_at || ''
+        }));
+        const projectSheet = XLSX.utils.json_to_sheet(projectData);
+        XLSX.utils.book_append_sheet(workbook, projectSheet, '项目数据');
       }
       
-      // 统计汇总数据
-      const statsData = [
-        { '统计项': '总任务数', '数量': tasks.length },
-        { '统计项': '已完成任务', '数量': tasks.filter(t => t.status === 'completed').length },
-        { '统计项': '进行中任务', '数量': tasks.filter(t => t.status === 'in_progress').length },
-        { '统计项': '待处理任务', '数量': tasks.filter(t => t.status === 'pending').length },
-        { '统计项': '高优先级任务', '数量': tasks.filter(t => t.priority === 'high').length },
-        { '统计项': '总项目数', '数量': projects.length },
-        { '统计项': '活跃项目', '数量': projects.filter(p => p.status === 'active').length },
-        { '统计项': '已完成项目', '数量': projects.filter(p => p.status === 'completed').length },
-      ];
-      
-      const statsWorksheet = XLSX.utils.json_to_sheet(statsData);
-      XLSX.utils.book_append_sheet(workbook, statsWorksheet, '统计汇总');
-
       const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([excelBuffer], { type: 'application/octet-stream' });
-      const fileName = `任务管理系统数据_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const fileName = `全部数据_${new Date().toISOString().split('T')[0]}.xlsx`;
       saveAs(blob, fileName);
+      showAlert('success', '导出成功', '全部数据已成功导出');
     } catch (error) {
       console.error('导出全部数据失败:', error);
-      alert('导出失败，请重试');
+      showAlert('error', '导出失败', '导出失败，请重试');
     }
   };
 
@@ -523,6 +543,22 @@ const Tables: React.FC = () => {
     return project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
            project.description?.toLowerCase().includes(searchTerm.toLowerCase());
   });
+
+  // 分页相关
+  const totalTaskPages = Math.ceil(filteredTasks.length / PAGE_SIZE);
+  const pagedTasks = filteredTasks.slice((taskPage - 1) * PAGE_SIZE, taskPage * PAGE_SIZE);
+
+  const totalProjectPages = Math.ceil(filteredProjects.length / PAGE_SIZE);
+  const pagedProjects = filteredProjects.slice((projectPage - 1) * PAGE_SIZE, projectPage * PAGE_SIZE);
+
+  // 只在数据/筛选/搜索/tab切换时重置分页，不依赖分页本身
+  useEffect(() => {
+    setTaskPage(1);
+  }, [activeTab, searchTerm, statusFilter, priorityFilter, projectFilter, tasks]);
+
+  useEffect(() => {
+    setProjectPage(1);
+  }, [activeTab, searchTerm, projects]);
 
   // 任务表格列配置
   const taskColumns = [
@@ -844,7 +880,7 @@ const Tables: React.FC = () => {
           {/* 数据表格 */}
           {activeTab === 'tasks' ? (
             <DataTable
-              data={filteredTasks}
+              data={pagedTasks}
               columns={taskColumns}
               selectedItems={selectedTasks}
               onItemSelect={handleTaskSelect}
@@ -858,7 +894,7 @@ const Tables: React.FC = () => {
             />
           ) : (
             <DataTable
-              data={filteredProjects}
+              data={pagedProjects}
               columns={projectColumns}
               selectedItems={new Set()}
               onItemSelect={() => {}}
@@ -869,10 +905,12 @@ const Tables: React.FC = () => {
             />
           )}
 
-          {/* 分页信息 */}
+          {/* 分页信息和分页器 */}
           <div className="mt-6 flex items-center justify-between">
             <div className="text-sm text-gray-700">
-              显示 {activeTab === 'tasks' ? filteredTasks.length : filteredProjects.length} 条记录
+              {activeTab === 'tasks'
+                ? `显示 ${pagedTasks.length} / ${filteredTasks.length} 条任务`
+                : `显示 ${pagedProjects.length} / ${filteredProjects.length} 条项目`}
               {activeTab === 'tasks' && selectedTasks.size > 0 && (
                 <span className="ml-2 text-blue-600">
                   (已选择 {selectedTasks.size} 个)
@@ -880,11 +918,41 @@ const Tables: React.FC = () => {
               )}
             </div>
             <div className="flex items-center space-x-2">
-              <button className="px-3 py-1 text-sm text-gray-500 bg-gray-100 rounded hover:bg-gray-200">
+              <button
+                className="px-3 py-1 text-sm text-gray-500 bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={
+                  (activeTab === 'tasks' && taskPage === 1) ||
+                  (activeTab === 'projects' && projectPage === 1)
+                }
+                onClick={() => {
+                  if (activeTab === 'tasks') {
+                    setTaskPage(prev => Math.max(1, prev - 1));
+                  } else {
+                    setProjectPage(prev => Math.max(1, prev - 1));
+                  }
+                }}
+              >
                 上一页
               </button>
-              <span className="px-3 py-1 text-sm text-gray-700">1</span>
-              <button className="px-3 py-1 text-sm text-gray-500 bg-gray-100 rounded hover:bg-gray-200">
+              <span className="px-3 py-1 text-sm text-gray-700">
+                {activeTab === 'tasks'
+                  ? `${taskPage} / ${Math.max(1, totalTaskPages)}`
+                  : `${projectPage} / ${Math.max(1, totalProjectPages)}`}
+              </span>
+              <button
+                className="px-3 py-1 text-sm text-gray-500 bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={
+                  (activeTab === 'tasks' && (taskPage >= totalTaskPages || totalTaskPages === 0)) ||
+                  (activeTab === 'projects' && (projectPage >= totalProjectPages || totalProjectPages === 0))
+                }
+                onClick={() => {
+                  if (activeTab === 'tasks') {
+                    setTaskPage(prev => Math.min(totalTaskPages, prev + 1));
+                  } else {
+                    setProjectPage(prev => Math.min(totalProjectPages, prev + 1));
+                  }
+                }}
+              >
                 下一页
               </button>
             </div>
@@ -899,7 +967,7 @@ const Tables: React.FC = () => {
           setIsEditModalOpen(false);
           setEditingTask(null);
         }}
-        onSave={handleTaskUpdate}
+        onSave={editingTask ? handleTaskUpdate : handleTaskCreate}
         task={editingTask}
         projects={projects}
       />
@@ -998,7 +1066,7 @@ const Tables: React.FC = () => {
                         创建日期
                       </label>
                       <div className="text-sm text-gray-900">
-                        {selectedTaskDetail.created_date || '-'}
+                        {selectedTaskDetail.created_at || '-'}
                       </div>
                     </div>
                     
@@ -1064,6 +1132,16 @@ const Tables: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* 确认对话框 */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        type={confirmDialog.type}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={hideConfirmDialog}
+      />
     </div>
   );
 };

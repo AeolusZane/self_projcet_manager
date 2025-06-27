@@ -5,6 +5,7 @@ import taskRoutes from './routes/tasks';
 import projectRoutes from './routes/projects';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
+import aiAnalysisRoutes from './routes/aiAnalysis';
 import { authenticateToken } from './routes/auth';
 
 const app = express();
@@ -13,6 +14,10 @@ const PORT = process.env.PORT || 3001;
 // 中间件
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// 初始化数据库
+initializeDatabase();
 
 // 添加请求日志中间件
 app.use((req, res, next) => {
@@ -33,6 +38,9 @@ console.log('项目路由已注册: /api/projects');
 
 app.use('/api/users', authenticateToken, userRoutes);
 console.log('用户路由已注册: /api/users');
+
+app.use('/api/ai-analysis', authenticateToken, aiAnalysisRoutes);
+console.log('AI分析路由已注册: /api/ai-analysis');
 
 // 健康检查
 app.get('/health', (req, res) => {
@@ -65,11 +73,19 @@ app.use('*', (req, res) => {
   });
 });
 
+// 错误处理中间件
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('服务器错误:', err);
+  res.status(500).json({ error: '服务器内部错误' });
+});
+
 // 启动服务器
 app.listen(PORT, async () => {
   try {
     await initializeDatabase();
-    console.log(`服务器运行在端口 ${PORT}`);
+    console.log(`🚀 服务器运行在端口 ${PORT}`);
+    console.log(`🤖 AI分析模块已启用`);
+    console.log(`📊 访问 http://localhost:${PORT}/api/health 检查服务状态`);
     console.log(`健康检查: http://localhost:${PORT}/health`);
     console.log(`认证测试: http://localhost:${PORT}/api/auth/test`);
     console.log(`注册接口: http://localhost:${PORT}/api/auth/register`);

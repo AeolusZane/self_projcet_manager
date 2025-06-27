@@ -1,5 +1,6 @@
 import { taskApi } from './api';
 import type { Task } from '../types';
+import { useAlert } from '../components/Alert';
 
 // 后台服务基础URL
 const BACKEND_BASE_URL = 'http://localhost:3001';
@@ -101,15 +102,15 @@ export class TaskService {
   // 根据创建日期过滤任务
   static async getTasksByCreatedDate(date: string): Promise<Task[]> {
     const allTasks = await this.getAllTasks();
-    return allTasks.filter(task => task.created_date === date);
+    return allTasks.filter(task => task.created_at === date);
   }
 
   // 获取指定日期范围内的任务
   static async getTasksByDateRange(startDate: string, endDate: string): Promise<Task[]> {
     const allTasks = await this.getAllTasks();
     return allTasks.filter(task => {
-      if (!task.created_date) return false;
-      return task.created_date >= startDate && task.created_date <= endDate;
+      if (!task.created_at) return false;
+      return task.created_at >= startDate && task.created_at <= endDate;
     });
   }
 

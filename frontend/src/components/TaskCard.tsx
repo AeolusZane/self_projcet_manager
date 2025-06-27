@@ -75,10 +75,10 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onEdit, onDelete }) => {
       </div>
       
       <div className="flex items-center justify-between text-xs text-gray-500">
-        {task.created_date && (
+        {task.created_at && (
           <div className="flex items-center">
             <Clock className="h-3 w-3 mr-1" />
-            创建: {format(new Date(task.created_date), 'yyyy-MM-dd')}
+            创建: {format(new Date(task.created_at), 'yyyy-MM-dd')}
           </div>
         )}
         
